@@ -31,6 +31,23 @@ if [[ -n "${PUBLIC_KEY:-}" ]]; then
   service ssh start || log "sshd failed to start (continuing)"
 fi
 
+# JupyterLab file manager on :8888 — upload LoRAs into models/loras, pull
+# rendered videos out of output/, edit h3_refs. Gated on JUPYTER_PASSWORD so
+# an unset variable never exposes an unauthenticated server; the password is
+# the login token. Rooted at /workspace so everything that matters is in reach.
+if [[ -n "${JUPYTER_PASSWORD:-}" ]]; then
+  log "starting JupyterLab on 0.0.0.0:8888"
+  jupyter lab \
+    --allow-root --no-browser \
+    --ip=0.0.0.0 --port 8888 \
+    --ServerApp.token="$JUPYTER_PASSWORD" \
+    --ServerApp.root_dir=/workspace \
+    --ServerApp.terminals_enabled=True \
+    >/tmp/jupyter.log 2>&1 &
+else
+  log "JUPYTER_PASSWORD not set — JupyterLab disabled"
+fi
+
 if [[ "${SKIP_PROVISION:-0}" != "1" ]]; then
   /opt/provision/scripts/provision.sh
 else

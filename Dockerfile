@@ -34,6 +34,11 @@ RUN pip install --no-cache-dir \
         torch torchvision torchaudio \
         --index-url https://download.pytorch.org/whl/cu128
 
+# JupyterLab: the pod's file manager — upload LoRAs, download rendered videos,
+# poke around /workspace from the browser. Started by start.sh on :8888 only
+# when JUPYTER_PASSWORD is set.
+RUN pip install --no-cache-dir jupyterlab
+
 # Build ComfyUI at /opt so an empty RunPod volume mounted at /workspace cannot
 # shadow it; start.sh copies it into place on first boot.
 ARG COMFYUI_REF=master
@@ -56,7 +61,7 @@ COPY workflows/ /opt/provision/workflows/
 RUN chmod +x /opt/provision/scripts/*.sh \
     && mkdir -p /var/run/sshd
 
-EXPOSE 8188 22
+EXPOSE 8188 8888 22
 
 # A pod that answers TCP but whose ComfyUI died is worse than one that reports
 # unhealthy — probe the actual API.
