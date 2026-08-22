@@ -24,19 +24,37 @@ FAILED=0
 # Remote config override: point PROVISION_CONFIG_URL at a raw GitHub URL to
 # change the model set WITHOUT rebuilding the image. This is the whole reason
 # provisioning is a boot-time step rather than baked into a Docker layer.
+#
+# PRIVATE REPO SUPPORT: raw.githubusercontent.com returns 404 (not 401!) for
+# private-repo files fetched without auth. Set GH_CONFIG_TOKEN on the pod to a
+# GitHub PAT with read access to the repo and it is attached automatically to
+# github.com / raw.githubusercontent.com fetches — and ONLY to those hosts, so
+# the token can never leak to an arbitrary URL someone puts in the variable.
 # -----------------------------------------------------------------------------
+fetch_config() {
+  local url="$1" out="$2"
+  local -a auth=()
+  case "$url" in
+    https://raw.githubusercontent.com/*|https://github.com/*|https://api.github.com/*)
+      [[ -n "${GH_CONFIG_TOKEN:-}" ]] && auth=(-H "Authorization: token $GH_CONFIG_TOKEN")
+      ;;
+  esac
+  curl -fsSL "${auth[@]}" "$url" -o "$out"
+}
+
 if [[ -n "${PROVISION_CONFIG_URL:-}" ]]; then
   log "fetching remote models.conf: $PROVISION_CONFIG_URL"
-  if curl -fsSL "$PROVISION_CONFIG_URL" -o /tmp/models.conf; then
+  if fetch_config "$PROVISION_CONFIG_URL" /tmp/models.conf; then
     MODELS_CONF=/tmp/models.conf
   else
     warn "could not fetch remote config; falling back to baked-in $MODELS_CONF"
+    warn "(private repo? raw.githubusercontent.com 404s without auth — set GH_CONFIG_TOKEN)"
   fi
 fi
 
 if [[ -n "${PROVISION_NODES_URL:-}" ]]; then
   log "fetching remote nodes.conf: $PROVISION_NODES_URL"
-  if curl -fsSL "$PROVISION_NODES_URL" -o /tmp/nodes.conf; then
+  if fetch_config "$PROVISION_NODES_URL" /tmp/nodes.conf; then
     NODES_CONF=/tmp/nodes.conf
   else
     warn "could not fetch remote nodes config; using baked-in $NODES_CONF"

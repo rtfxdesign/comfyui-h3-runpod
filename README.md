@@ -92,8 +92,12 @@ Four are seeded into the sidebar under **workflows/H3/** on first boot:
 
 **1.** Push to GitHub — Actions builds and publishes to `ghcr.io/<user>/<repo>:latest`.
 
-**2.** Make the package public (GitHub → Packages → Package settings → visibility),
-or add a RunPod registry credential.
+**2.** Give RunPod pull access to the private image. In RunPod:
+**Settings → Container Registry Auth → Add** —
+username `rtfxdesign`, password = a GitHub **classic** PAT with `read:packages`
+(fine-grained PATs do not cover GHCR pulls). Then select that credential in the
+pod template's Container Registry Credentials dropdown.
+(Alternative: make the GHCR package public and skip all of this.)
 
 **3.** Create the pod:
 
@@ -134,6 +138,7 @@ want it for short work.
 | `CIVITAI_API_TOKEN` | — | CivitAI downloads (401 without it) |
 | `PROVISION_CONFIG_URL` | — | Remote `models.conf` override — change models without a rebuild |
 | `PROVISION_NODES_URL` | — | Remote `nodes.conf` override |
+| `GH_CONFIG_TOKEN` | — | PAT for fetching the URLs above from a **private** repo (Contents: read). Only ever sent to github.com hosts |
 | `SKIP_PROVISION` | `0` | `1` boots straight to ComfyUI, no downloads |
 | `COMFY_EXTRA_ARGS` | — | Extra launch flags |
 | `COMFY_PORT` | `8188` | Listen port |
