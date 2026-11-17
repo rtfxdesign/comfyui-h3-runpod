@@ -7,8 +7,14 @@ set -Eeuo pipefail
 
 COMFY_DIR="${COMFY_DIR:-/workspace/ComfyUI}"
 COMFY_PORT="${COMFY_PORT:-8188}"
+SCRIPTS_DIR="${SCRIPTS_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 
 log() { printf '\033[36m[start]\033[0m %s\n' "$*"; }
+
+# CIVITAI_TOKEN is accepted as an alias for CIVITAI_API_TOKEN.
+if [[ -z "${CIVITAI_API_TOKEN:-}" && -n "${CIVITAI_TOKEN:-}" ]]; then
+  export CIVITAI_API_TOKEN="$CIVITAI_TOKEN"
+fi
 
 # -----------------------------------------------------------------------------
 # RunPod mounts the persistent volume at /workspace. The image builds ComfyUI
@@ -49,17 +55,46 @@ else
 fi
 
 if [[ "${SKIP_PROVISION:-0}" != "1" ]]; then
-  /opt/provision/scripts/provision.sh
+  "$SCRIPTS_DIR/provision.sh"
 else
   log "SKIP_PROVISION=1 — skipping model/node provisioning"
 fi
 
+# -----------------------------------------------------------------------------
+# Launch flags.
+#   --enable-manager   ComfyUI-Manager (pip package comfyui_manager, v0.45.0
+#                      way). H3_ENABLE_MANAGER=0 turns it off.
+#   --highvram         H3_HIGHVRAM=auto (default): only when GPU 0 has
+#                      >= 140000 MiB (H200 141 GB, B200 180 GB). There the
+#                      image model, a video model and the bf16 text encoder
+#                      (40 + 40 + 52 GB) all fit, so keeping them resident
+#                      skips reloads. On 80-96 GB cards it would force
+#                      unload/reload churn instead, so it stays off.
+#                      H3_HIGHVRAM=1 forces it on, 0 forces it off.
+#   COMFY_EXTRA_ARGS   anything else, e.g. --disable-dynamic-vram (fixes the
+#                      VBAR MemoryError seen in TextGenerateV2 on the home PC;
+#                      add --disable-pinned-memory too if it persists),
+#                      --lowvram, --use-sage-attention.
+# -----------------------------------------------------------------------------
+# shellcheck source=gpu_tier.sh
+source "$SCRIPTS_DIR/gpu_tier.sh"
+resolve_tier
+args=(--listen 0.0.0.0 --port "$COMFY_PORT")
+
+if [[ "${H3_ENABLE_MANAGER:-1}" == "1" ]] && python -c "import comfyui_manager" >/dev/null 2>&1; then
+  args+=(--enable-manager)
+fi
+
+case "${H3_HIGHVRAM:-auto}" in
+  1|true|yes) args+=(--highvram) ;;
+  auto)       if (( H3_GPU_MIB >= 140000 )); then args+=(--highvram); fi ;;
+esac
+
 cd "$COMFY_DIR"
-log "starting ComfyUI on 0.0.0.0:$COMFY_PORT"
+log "GPU 0: ${H3_GPU_MIB} MiB (cc ${H3_GPU_CC}); tier $H3_TIER_RESOLVED ($H3_TIER_REASON)"
+log "starting ComfyUI: python main.py ${args[*]} ${COMFY_EXTRA_ARGS:-}"
 
 # exec so ComfyUI becomes PID 1 and receives SIGTERM directly — otherwise the
 # pod takes the full kill timeout to stop and can lose in-flight writes.
-exec python main.py \
-  --listen 0.0.0.0 \
-  --port "$COMFY_PORT" \
-  ${COMFY_EXTRA_ARGS:-}
+# shellcheck disable=SC2086
+exec python main.py "${args[@]}" ${COMFY_EXTRA_ARGS:-}
