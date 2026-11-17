@@ -32,6 +32,30 @@ You never run Docker yourself. The pieces:
 
 ---
 
+## Images only (smallest)
+
+Only generating images? Add the pod env var **`H3_MODE=image`**. The pod then
+downloads just what the H3 Image workflows load: the H3 Image model, the
+Qwen3-VL 32B text encoder, the Qwen3.5 9B prompt enhancer (`TextGenerateV2`,
+used by every image workflow), the image VAE, the pDMD 2-step speed LoRA and
+the H3 Image LoRA catalog (default ≈ 0.6 GB). It skips the ref2va/fl2va video
+models, video + audio VAEs, video turbo LoRAs, adult video LoRAs, Eros Max,
+the ControlNet patch, SDPose/RT-DETR, the video-only node packs (Multishot,
+sol-attn, VideoHelperSuite, VFI) and the video workflows.
+
+| Tier | Typical GPUs | Images-only download (incl. image LoRAs) | Volume to create | Full stack, for comparison |
+|---|---|---|---|---|
+| **16** | RTX 4080/5080, A4000/A4500 | **47.7 GB** | **80 GB** | 121.8 GB |
+| **24** | RTX 4090, **RTX 5090**, L4, A100 40GB | **61.6 GB** | **100 GB** | 139.9 GB |
+| **48** | **L40S**, RTX 6000 Ada, A6000, A40 | **80.8 GB** | **120 GB** | 159.2 GB |
+| **80** | **H100 80GB**, A100 80GB | **90.4 GB** | **130 GB** | 226.5 GB |
+| **96** | RTX PRO 6000, H100 NVL, H200, B200 | **114.8 GB** | **150 GB** | 250.8 GB |
+
+The volume size is the download plus ~30 GB for ComfyUI, outputs and a few
+extra LoRAs. The manifests are `config/tiers/image/<tier>.conf`. Switching a
+volume back to `H3_MODE=full` later just downloads the missing video files.
+`H3_ADULT_LORAS` is `none` in image mode unless you set it yourself.
+
 ## Step by step (first time)
 
 **1. Push this folder to GitHub.** Unzip it, then in the `comfyui-h3-runpod`
@@ -60,7 +84,8 @@ private. Either
 
 **4. Create a network volume** (RunPod → **Storage → New Network Volume**), in a
 data center that has the GPU you want. Size it from the tier table below —
-e.g. **300 GB for an H100**. A network volume keeps the 120–250 GB of models
+e.g. **300 GB for an H100** — or from the much smaller
+[images-only table](#images-only-smallest) if you set `H3_MODE=image`. A network volume keeps the 120–250 GB of models
 between pods, so you only download them once.
 
 **5. Create a pod template** (RunPod → **Templates → New Template**):
@@ -75,6 +100,7 @@ between pods, so you only download them once.
 | Env `HF_TOKEN` | your Hugging Face read token |
 | Env `CIVITAI_API_TOKEN` | your CivitAI API key (`CIVITAI_TOKEN` also works) |
 | Env `H3_TIER` | `auto` (default) — or force `16` `24` `48` `80` `96` |
+| Env `H3_MODE` | `image` for images only (≈ 48–115 GB instead of 122–251 GB); leave unset for image + video |
 | Env `JUPYTER_PASSWORD` | optional — turns on the JupyterLab file manager |
 
 Put tokens **only** in RunPod's environment variables (RunPod "Secrets" work
@@ -122,8 +148,9 @@ adult video LoRAs (default 6 ≈ 1.5 GB, `all` ≈ 7.0 GB), H3 Image LoRAs
 `H3_MODEL_PROFILES=fasth3` (two 22 GB checkpoints) and for your outputs.
 
 **Which GPU should I rent?**
-- **Images only / cheapest:** RTX 5090 (tier 24). Same models as home but the
-  int8 text encoder and 2× the VRAM headroom.
+- **Images only / cheapest:** RTX 5090 (tier 24) with `H3_MODE=image`
+  (61.6 GB download, 100 GB volume). Same models as home but the int8 text
+  encoder and 2× the VRAM headroom.
 - **Images at full bf16 + video:** L40S (tier 48).
 - **Best video quality per dollar:** H100 80GB (tier 80) — everything bf16.
 - **Everything resident, no swapping:** H200 / B200 (tier 96, `--highvram` on
@@ -145,7 +172,8 @@ of image + video + bf16 encoder fit at once.
 
 To change a tier, edit `tools/tiers_spec.py` and run
 `python3 tools/build_tiers.py` — it re-checks every URL and size and
-regenerates `config/tiers/*.conf` and `workflows/tiers/*/`.
+regenerates `config/tiers/*.conf`, the images-only `config/tiers/image/*.conf`
+and `workflows/tiers/*/`.
 
 ---
 
@@ -186,6 +214,7 @@ model, use the **H3 Image LoRA Stack** node (custom node
 | `HF_TOKEN` | — | Hugging Face token (read). Sent only to huggingface.co |
 | `CIVITAI_API_TOKEN` (or `CIVITAI_TOKEN`) | — | CivitAI downloads: Eros Max, adult + image LoRA catalogs. Sent only to civitai.com |
 | `H3_TIER` | `auto` | `auto`, `16`, `24`, `48`, `80`, `96`, or `none` (only `models.conf` + profiles) |
+| `H3_MODE` | `full` | `full` = image + video stack; `image` = images only (`config/tiers/image/<tier>.conf`, no video models/LoRAs/nodes/workflows — see [Images only](#images-only-smallest)) |
 | `H3_HIGHVRAM` | `auto` | `--highvram` only on ≥ 140 GB GPUs; `1` force on, `0` off |
 | `H3_ENABLE_MANAGER` | `1` | ComfyUI-Manager (`--enable-manager`); `0` = off |
 | `H3_ADULT_LORAS` | `default` | `default` / `all` / `none` / comma list of keys or CivitAI version ids (`config/adult_loras.conf`) |

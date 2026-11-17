@@ -36,7 +36,8 @@
    "sdpose_wholebody_fp16.safetensors": 1916645792,
    "rt_detr_v4-x-hgnet_fp16.safetensors": 123968978,
    "10Eros_Max_h3_8stepTURBO_beta7_fix1_int8.safetensors": 21055726440
-  }
+  },
+  "image_only_bytes": 47134747921
  },
  "24": {
   "label": "24-47 GB - int8 models, int8 text encoder, fp16 video VAE",
@@ -75,7 +76,8 @@
    "sdpose_wholebody_fp16.safetensors": 1916645792,
    "rt_detr_v4-x-hgnet_fp16.safetensors": 123968978,
    "10Eros_Max_h3_8stepTURBO_beta7_int8HQ.safetensors": 22893150024
-  }
+  },
+  "image_only_bytes": 60993477966
  },
  "48": {
   "label": "48-79 GB - bf16 image model, int8 video models",
@@ -114,7 +116,8 @@
    "sdpose_wholebody_fp16.safetensors": 1916645792,
    "rt_detr_v4-x-hgnet_fp16.safetensors": 123968978,
    "10Eros_Max_h3_8stepTURBO_beta7_int8HQ.safetensors": 22893150024
-  }
+  },
+  "image_only_bytes": 80248820326
  },
  "80": {
   "label": "80-92 GB - everything bf16, int8 text encoder stays loaded next to it",
@@ -153,7 +156,8 @@
    "sdpose_wholebody_fp16.safetensors": 1916645792,
    "rt_detr_v4-x-hgnet_fp16.safetensors": 123968978,
    "10Eros_Max_h3_8stepTURBO_beta7.safetensors": 40222934448
-  }
+  },
+  "image_only_bytes": 89807011122
  },
  "96": {
   "label": "93 GB+ - everything bf16 including the 51 GB bf16 text encoder",
@@ -192,6 +196,7 @@
    "sdpose_wholebody_fp16.safetensors": 1916645792,
    "rt_detr_v4-x-hgnet_fp16.safetensors": 123968978,
    "10Eros_Max_h3_8stepTURBO_beta7.safetensors": 40222934448
-  }
+  },
+  "image_only_bytes": 114171964226
  }
 }

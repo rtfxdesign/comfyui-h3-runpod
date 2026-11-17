@@ -14,7 +14,8 @@
 #          No nvidia-smi / no GPU -> 24, with a warning.
 #    none  no tier manifest at all: only config/models.conf + H3_MODEL_PROFILES
 #          (the pre-tier behaviour of this repo).
-#  Tier N downloads config/tiers/N.conf and seeds workflows/tiers/N/.
+#  Tier N downloads config/tiers/N.conf (config/tiers/image/N.conf with
+#  H3_MODE=image) and seeds workflows/tiers/N/.
 # =============================================================================
 
 # Prints "<total MiB> <compute capability>" of GPU 0, or nothing.

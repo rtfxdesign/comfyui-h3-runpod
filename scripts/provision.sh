@@ -13,6 +13,13 @@
 #  Order: custom nodes -> GPU tier manifest (config/tiers/<tier>.conf, picked
 #  by H3_TIER / VRAM) -> config/models.conf (your extras) -> H3_MODEL_PROFILES
 #  -> adult video LoRA catalog -> H3 Image LoRA catalog -> workflows.
+#
+#  H3_MODE=image (images only, smallest volume): the tier manifest becomes
+#  config/tiers/image/<tier>.conf (H3 Image model, Qwen3-VL text encoder,
+#  Qwen3.5 9B prompt enhancer, image VAE, pDMD LoRA), the adult VIDEO LoRA
+#  catalog defaults to none, node packs tagged `video` in nodes.conf are not
+#  cloned, and only the image workflows are seeded. H3_MODE=full (default)
+#  is the complete image + video stack.
 # =============================================================================
 set -Eeuo pipefail
 
@@ -45,6 +52,15 @@ warn() { printf '\033[33m[provision] WARN:\033[0m %s\n' "$*" >&2; WARNED=$((WARN
 err()  { printf '\033[31m[provision] ERROR:\033[0m %s\n' "$*" >&2; }
 plan() { printf '\033[35m[provision] DRY_RUN:\033[0m %s\n' "$*"; }
 is_dry() { [[ "$DRY_RUN" == "1" ]]; }
+
+# H3_MODE: full (default, image + video) or image (images only).
+case "${H3_MODE:-full}" in
+  ""|full|all|video)            H3_MODE=full ;;
+  image|images|image-only|img)  H3_MODE=image ;;
+  *) printf '\033[33m[provision] WARN:\033[0m H3_MODE=%s is not full or image — using full\n' "$H3_MODE" >&2
+     H3_MODE=full ;;
+esac
+is_image_mode() { [[ "$H3_MODE" == "image" ]]; }
 
 # Strip leading/trailing whitespace without xargs (xargs chokes on quotes).
 trim() {
@@ -126,11 +142,17 @@ install_nodes() {
     line="$(trim "$line")"
     [[ -z "$line" ]] && continue
 
-    local url ref name dest
+    local url ref tag name dest
     url="$(trim "$(echo "$line" | awk -F'|' '{print $1}')")"
     ref="$(trim "$(echo "$line" | awk -F'|' '{print $2}')")"
+    tag="$(trim "$(echo "$line" | awk -F'|' '{print $3}')")"
     name="$(basename "$url" .git)"
     dest="$COMFY_DIR/custom_nodes/$name"
+
+    if is_image_mode && [[ "${tag,,}" == "video" ]]; then
+      log "H3_MODE=image: skipping video-only node $name"
+      continue
+    fi
 
     if is_dry; then
       plan "node $name ${ref:+@ $ref }<- $url"
@@ -370,13 +392,15 @@ download_conf() {
 # (or none), so profiles never mix turbo families.
 # -----------------------------------------------------------------------------
 download_models() {
+  local manifest="$TIERS_DIR/$H3_TIER_RESOLVED.conf"
+  is_image_mode && manifest="$TIERS_DIR/image/$H3_TIER_RESOLVED.conf"
   if [[ "$H3_TIER_RESOLVED" == "none" ]]; then
     log "GPU tier: none (H3_TIER=none) — only models.conf and profiles"
-  elif [[ -f "$TIERS_DIR/$H3_TIER_RESOLVED.conf" ]]; then
-    log "GPU tier $H3_TIER_RESOLVED ($H3_TIER_REASON)"
-    download_conf "$TIERS_DIR/$H3_TIER_RESOLVED.conf"
+  elif [[ -f "$manifest" ]]; then
+    log "GPU tier $H3_TIER_RESOLVED ($H3_TIER_REASON), H3_MODE=$H3_MODE"
+    download_conf "$manifest"
   else
-    warn "GPU tier manifest missing: $TIERS_DIR/$H3_TIER_RESOLVED.conf"
+    warn "GPU tier manifest missing: $manifest"
   fi
 
   if [[ -f "$MODELS_CONF" ]]; then
@@ -407,7 +431,12 @@ download_models() {
 # Writes models/loras/H3_ADULT_LORAS_INDEX.txt mapping files to strength/trigger.
 # -----------------------------------------------------------------------------
 download_adult_loras() {
-  download_catalog "$ADULT_LORAS_CONF" "${H3_ADULT_LORAS-default}" H3_ADULT_LORAS \
+  # These are VIDEO LoRAs: images-only mode skips them unless asked for.
+  local sel="${H3_ADULT_LORAS-default}"
+  if is_image_mode && [[ -z "${H3_ADULT_LORAS+x}" ]]; then
+    sel=none
+  fi
+  download_catalog "$ADULT_LORAS_CONF" "$sel" H3_ADULT_LORAS \
     loras H3_ADULT_LORAS_INDEX.txt "adult LoRAs"
 }
 
@@ -532,6 +561,9 @@ scaffold_h3() {
       plan "seed workflows from $WORKFLOWS_SRC/tiers/$H3_TIER_RESOLVED into $wf/${H3_TIER_RESOLVED}GB (and $wf/${H3_TIER_RESOLVED}GB/official)"
     fi
     plan "scaffold $refs and seed workflows from $WORKFLOWS_SRC into $wf/original (and $wf/original/official)"
+    if is_image_mode; then
+      plan "H3_MODE=image: only H3_image_*, H3_character_sheet* and official image_* workflows are seeded"
+    fi
     return
   fi
 
@@ -591,6 +623,13 @@ EOF
     for f in "$from"/*.json; do
       [[ -e "$f" ]] || continue
       base="$(basename "$f")"
+      # Images only: video graphs would just open with missing models.
+      if is_image_mode; then
+        case "$base" in
+          H3_image_*|H3_character_sheet*|image_*) ;;
+          *) continue ;;
+        esac
+      fi
       if [[ -e "$to/$base" ]]; then
         log "workflow exists, keeping yours: ${to#"$COMFY_DIR"/}/$base"
       else
@@ -612,6 +651,7 @@ else
   log "provisioning into $COMFY_DIR"
 fi
 log "GPU tier: $H3_TIER_RESOLVED  ($H3_TIER_REASON)"
+log "H3_MODE: $H3_MODE$(is_image_mode && printf ' (images only: no video models, video LoRAs or video-only nodes)')"
 install_nodes
 download_models
 download_adult_loras
